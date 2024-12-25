@@ -6,8 +6,12 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -42,6 +46,27 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // API 30以上の場合
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.decorView.windowInsetsController?.apply {
+                // systemBars : Status barとNavigation bar両方
+                hide(WindowInsets.Type.systemBars())
+                // hide(WindowInsets.Type.statusBars())
+                // hide(WindowInsets.Type.navigationBars())
+                systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        // API 29以下の場合
+        } else {
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+            )
+        }
+
         // バインディングを初期化
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -219,7 +244,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         // アクティビティが再開されたときにパーミッションを確認
         if (allPermissionsGranted()){
             if (detector == null) {
-                detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+                cameraExecutor.execute {
+                    detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+                }
             }
             startCamera() // パーミッションが許可されていればカメラを開始
         } else {
@@ -247,7 +274,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
         runOnUiThread {
             // 検出結果をUIに表示
-            binding.inferenceTime.text = "${inferenceTime}ms" // 推論時間を表示
             binding.overlay.apply {
                 setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
                 invalidate() // オーバーレイを再描画
