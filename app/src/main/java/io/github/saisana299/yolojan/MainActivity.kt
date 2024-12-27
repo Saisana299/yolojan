@@ -2,16 +2,15 @@ package io.github.saisana299.yolojan
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Matrix
-import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
-import android.view.View
-import android.view.WindowInsets
-import android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -25,10 +24,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.github.saisana299.yolojan.Constants.LABELS_PATH
 import io.github.saisana299.yolojan.Constants.MODEL_PATH
 import yolojan.R
 import yolojan.databinding.ActivityMainBinding
+import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -41,31 +44,17 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var detector: Detector? = null
+    private var detector_pict: Detector? = null
+    private var capturedBitmap: Bitmap? = null
 
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var boundingBoxDrawer: BoundingBoxDrawer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // API 30以上の場合
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.decorView.windowInsetsController?.apply {
-                // systemBars : Status barとNavigation bar両方
-                hide(WindowInsets.Type.systemBars())
-                // hide(WindowInsets.Type.statusBars())
-                // hide(WindowInsets.Type.navigationBars())
-                systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        // API 29以下の場合
-        } else {
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-            )
-        }
+        // フルスクリーン
+        setFullscreen()
 
         // バインディングを初期化
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -76,8 +65,12 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         // ディテクタを初期化
         cameraExecutor.execute {
-            detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+            detector = Detector(1, baseContext, MODEL_PATH, LABELS_PATH, this)
+            detector_pict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
         }
+
+        // BoundingBoxDrawerの初期化
+        boundingBoxDrawer = BoundingBoxDrawer(this)
 
         // パーミッションが許可されているか確認
         if (allPermissionsGranted()) {
@@ -90,8 +83,21 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         bindListeners() // リスナーをバインド
     }
 
+    private fun setFullscreen() {
+        val windowInsetsController =
+            WindowCompat.getInsetsController(window, window.decorView)
+        // システムバーの動作設定
+        windowInsetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        // ステータスバーとナビゲーションバーを隠す
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
     private fun bindListeners() {
         binding.apply {
+            floatingActionButton.setOnClickListener {
+                takePicture()
+            }
         }
     }
 
@@ -114,12 +120,12 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         constraintSet.clone(binding.cameraContainer)
         if (orientation == Configuration.ORIENTATION_PORTRAIT) {
             // 縦向きの場合
-            constraintSet.setDimensionRatio(R.id.view_finder, "9:16")
-            constraintSet.setDimensionRatio(R.id.overlay, "9:16")
+            constraintSet.setDimensionRatio(R.id.view_finder, "3:4")
+            //constraintSet.setDimensionRatio(R.id.overlay, "3:4")
         } else if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
             // 横向きの場合
-            constraintSet.setDimensionRatio(R.id.view_finder, "16:9")
-            constraintSet.setDimensionRatio(R.id.overlay, "16:9")
+            constraintSet.setDimensionRatio(R.id.view_finder, "4:3")
+            //constraintSet.setDimensionRatio(R.id.overlay, "4:3")
         }
         constraintSet.applyTo(binding.cameraContainer)
 
@@ -136,7 +142,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         preview =  Preview.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder()
-                    .setAspectRatioStrategy(AspectRatioStrategy(AspectRatio.RATIO_16_9, AspectRatioStrategy.FALLBACK_RULE_AUTO))
+                    .setAspectRatioStrategy(AspectRatioStrategy(AspectRatio.RATIO_4_3, AspectRatioStrategy.FALLBACK_RULE_AUTO))
                     .build()
             )
             .setTargetRotation(rotation)
@@ -146,7 +152,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         imageAnalyzer = ImageAnalysis.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder()
-                    .setAspectRatioStrategy(AspectRatioStrategy(AspectRatio.RATIO_16_9, AspectRatioStrategy.FALLBACK_RULE_AUTO))
+                    .setAspectRatioStrategy(AspectRatioStrategy(AspectRatio.RATIO_4_3, AspectRatioStrategy.FALLBACK_RULE_AUTO))
                     .build()
             )
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -187,6 +193,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 matrix, true
             )
 
+            // 変数にキャッシュ
+            capturedBitmap = rotatedBitmap
+
             // ディテクタで物体を検出
             detector?.detect(rotatedBitmap)
         }
@@ -210,6 +219,44 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    private fun takePicture() {
+        capturedBitmap?.let { bitmap ->
+            detector_pict?.detect(bitmap)
+        }
+    }
+
+    private fun savePicture(bitmap: Bitmap) {
+        val filename = "IMG_${System.currentTimeMillis()}.jpg"
+
+        // MediaStoreに画像を保存するためのContentValuesを作成
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES) // 保存先のディレクトリ
+        }
+
+        // MediaStoreに新しい画像を挿入
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+
+        uri?.let {
+            try {
+                // OutputStreamを取得
+                val outputStream = contentResolver.openOutputStream(it)
+                outputStream?.use { fos -> // nullチェックを追加
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos) // JPEG形式で保存
+                } ?: run {
+                    Log.e(TAG, "OutputStream is null")
+                }
+
+                Log.d(TAG, "Picture saved: $uri")
+            } catch (e: IOException) {
+                Log.e(TAG, "Error saving picture", e)
+            }
+        } ?: run {
+            Log.e(TAG, "Error creating media store entry")
+        }
+    }
+
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         // 各パーミッションが許可されているか確認
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
@@ -227,6 +274,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onDestroy()
         // ディテクタを閉じてリソースを解放
         detector?.close()
+        detector_pict?.close()
         // カメラエグゼキュータをシャットダウン
         cameraExecutor.shutdown()
     }
@@ -234,6 +282,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onPause() {
         super.onPause()
         detector = null
+        detector_pict = null
         imageAnalyzer = null
         camera = null
         preview = null
@@ -243,9 +292,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onResume()
         // アクティビティが再開されたときにパーミッションを確認
         if (allPermissionsGranted()){
-            if (detector == null) {
+            if (detector == null || detector_pict == null) {
                 cameraExecutor.execute {
-                    detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+                    detector = Detector(1, baseContext, MODEL_PATH, LABELS_PATH, this)
+                    detector_pict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
                 }
             }
             startCamera() // パーミッションが許可されていればカメラを開始
@@ -259,7 +309,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         private const val TAG = "Camera" // ログ用のタグ
         private const val REQUEST_CODE_PERMISSIONS = 10 // パーミッションリクエストのコード
         private val REQUIRED_PERMISSIONS = mutableListOf (
-            Manifest.permission.CAMERA // 必要なパーミッションのリスト
+            Manifest.permission.CAMERA, // 必要なパーミッションのリスト
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
         ).toTypedArray()
     }
 
@@ -271,12 +322,20 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     }
 
     @SuppressLint("SetTextI18n")
-    override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
-        runOnUiThread {
-            // 検出結果をUIに表示
-            binding.overlay.apply {
-                setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
-                invalidate() // オーバーレイを再描画
+    override fun onDetect(id: Int, boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
+        if(id == 1) {
+            runOnUiThread {
+                // 検出結果をUIに表示
+                binding.overlay.apply {
+                    setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
+                    invalidate() // オーバーレイを再描画
+                }
+            }
+        } else if(id == 2) {
+            Log.d("MainActivity", "Detected ${boundingBoxes.size} bounding boxes.")
+            capturedBitmap?.let { bitmap ->
+                val resultBitmap = boundingBoxDrawer.drawBoundingBoxes(bitmap, boundingBoxes)
+                savePicture(resultBitmap)
             }
         }
     }

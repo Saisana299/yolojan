@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import io.github.saisana299.yolojan.MetaData.extractNamesFromLabelFile
-import io.github.saisana299.yolojan.MetaData.extractNamesFromMetadata
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
@@ -17,6 +16,7 @@ import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 
 class Detector(
+    private val id: Int,
     context: Context,
     modelPath: String,
     labelPath: String,
@@ -54,7 +54,7 @@ class Detector(
         val inputShape = interpreter.getInputTensor(0)?.shape()
         val outputShape = interpreter.getOutputTensor(0)?.shape()
 
-        labels.addAll(extractNamesFromMetadata(model))
+        // labels.addAll(extractNamesFromMetadata(model))
         if (labels.isEmpty()) {
             labels.addAll(extractNamesFromLabelFile(context, labelPath))
         }
@@ -90,7 +90,9 @@ class Detector(
 
         var inferenceTime = SystemClock.uptimeMillis()
 
-        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val croppedBitmap = cropToSquare(frame)
+
+        val resizedBitmap = Bitmap.createScaledBitmap(croppedBitmap, tensorWidth, tensorHeight, false)
 
         val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
         tensorImage.load(resizedBitmap)
@@ -108,7 +110,7 @@ class Detector(
             return
         }
 
-        detectorListener.onDetect(bestBoxes, inferenceTime)
+        detectorListener.onDetect(id, bestBoxes, inferenceTime)
     }
 
     private fun bestBox(array: FloatArray) : List<BoundingBox>? {
@@ -192,9 +194,21 @@ class Detector(
         return intersectionArea / (box1Area + box2Area - intersectionArea)
     }
 
+    private fun cropToSquare(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val size = minOf(width, height)
+
+        // 中心から正方形に切り抜く
+        val xOffset = (width - size) / 2
+        val yOffset = (height - size) / 2
+
+        return Bitmap.createBitmap(bitmap, xOffset, yOffset, size, size)
+    }
+
     interface DetectorListener {
         fun onEmptyDetect()
-        fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long)
+        fun onDetect(id: Int, boundingBoxes: List<BoundingBox>, inferenceTime: Long)
     }
 
     companion object {
@@ -202,7 +216,7 @@ class Detector(
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.3F
-        private const val IOU_THRESHOLD = 0.5F
+        private const val CONFIDENCE_THRESHOLD = 0.6F
+        private const val IOU_THRESHOLD = 0.7F
     }
 }

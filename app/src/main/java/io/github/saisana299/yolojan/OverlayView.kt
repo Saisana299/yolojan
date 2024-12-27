@@ -10,6 +10,7 @@ import android.view.View
 import androidx.core.content.ContextCompat
 import yolojan.R
 
+
 class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs) {
 
     private var results = listOf<BoundingBox>()
@@ -33,13 +34,13 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     }
 
     private fun initPaints() {
-        textBackgroundPaint.color = Color.BLACK
+        textBackgroundPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
         textBackgroundPaint.style = Paint.Style.FILL
-        textBackgroundPaint.textSize = 25f
+        textBackgroundPaint.textSize = 20f
 
         textPaint.color = Color.WHITE
         textPaint.style = Paint.Style.FILL
-        textPaint.textSize = 25f
+        textPaint.textSize = 20f
 
         boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
         boxPaint.strokeWidth = 4F
@@ -55,6 +56,22 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
             val right = it.x2 * width
             val bottom = it.y2 * height
 
+            // 名前で色を分ける
+            if("萬" in it.clsName) {
+                textBackgroundPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_man)
+                boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_man)
+            } else if("筒" in it.clsName) {
+                textBackgroundPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_pin)
+                boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_pin)
+            } else if("索" in it.clsName) {
+                textBackgroundPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_sou)
+                boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color_sou)
+            } else {
+                textBackgroundPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
+                boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
+            }
+
+
             canvas.drawRect(left, top, right, bottom, boxPaint)
             val drawableText = it.clsName + " " + String.format("%.2f", it.cnf)
 
@@ -63,12 +80,12 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
             val textHeight = bounds.height()
             canvas.drawRect(
                 left,
-                top,
+                top - textHeight - BOUNDING_RECT_TEXT_PADDING, // ボックスの上に配置
                 left + textWidth + BOUNDING_RECT_TEXT_PADDING,
-                top + textHeight + BOUNDING_RECT_TEXT_PADDING,
+                top,
                 textBackgroundPaint
             )
-            canvas.drawText(drawableText, left, top + bounds.height(), textPaint)
+            canvas.drawText(drawableText, left, top - BOUNDING_RECT_TEXT_PADDING, textPaint)
 
         }
     }

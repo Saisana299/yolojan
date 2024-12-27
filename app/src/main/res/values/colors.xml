@@ -2,7 +2,10 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="bounding_box_color">#AF011C</color>
+    <color name="bounding_box_color">#862F99</color>
+    <color name="bounding_box_color_man">#DB3D3D</color>
+    <color name="bounding_box_color_sou">#2E9129</color>
+    <color name="bounding_box_color_pin">#2F4C99</color>
     <color name="gray">#999</color>
     <color name="orange">#F93</color>
 </resources>
