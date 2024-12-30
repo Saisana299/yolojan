@@ -1,10 +1,10 @@
 ## yolojan
-Detects mahjong tiles and calculates points.
+Use the YOLOv8 model to detect mahjong tiles.
 
 yolojan was created based on the following repository. Thanks to the creators.
 https://github.com/surendramaran/YOLO/tree/main/YOLOv8-Object-Detector-Android-Tflite
 
-### Get Started
+### Getting Started
 Create an `assets` folder in `app/src/main` and put the label text file and tflite file in it.
 
 ### License

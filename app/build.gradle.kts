@@ -64,4 +64,6 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
+
+    implementation("com.github.mahjong4j:mahjong4j:0.1.0")
 }

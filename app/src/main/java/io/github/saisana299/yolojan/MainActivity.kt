@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -29,11 +30,20 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.saisana299.yolojan.Constants.LABELS_PATH
 import io.github.saisana299.yolojan.Constants.MODEL_PATH
+import org.mahjong4j.HandsOverFlowException
+import org.mahjong4j.IllegalMentsuSizeException
+import org.mahjong4j.IllegalShuntsuIdentifierException
+import org.mahjong4j.Mahjong
+import org.mahjong4j.MahjongTileOverFlowException
+import org.mahjong4j.hands.MahjongHands
+import org.mahjong4j.tile.MahjongTile
+import org.mahjong4j.yaku.normals.MahjongYakuEnum
 import yolojan.R
 import yolojan.databinding.ActivityMainBinding
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
 
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var binding: ActivityMainBinding
@@ -44,10 +54,13 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var detector: Detector? = null
-    private var detector_pict: Detector? = null
+    private var detectorPict: Detector? = null
     private var capturedBitmap: Bitmap? = null
+    private var pictBitmap: Bitmap? = null
+    private var resultBitmap: Bitmap? = null
 
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var pictureExecutor: ExecutorService
     private lateinit var boundingBoxDrawer: BoundingBoxDrawer
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,10 +76,22 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         // カメラ用のスレッドエグゼキュータを作成
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+        // 画像用のスレッドエグゼキュータを作成
+        pictureExecutor = Executors.newSingleThreadExecutor()
+
         // ディテクタを初期化
         cameraExecutor.execute {
             detector = Detector(1, baseContext, MODEL_PATH, LABELS_PATH, this)
-            detector_pict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
+            runOnUiThread {
+                binding.apply {
+                    textView2.visibility = View.GONE
+                    textView2.invalidate()
+                }
+            }
+        }
+
+        pictureExecutor.execute {
+            detectorPict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
         }
 
         // BoundingBoxDrawerの初期化
@@ -98,6 +123,19 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             floatingActionButton.setOnClickListener {
                 takePicture()
             }
+            floatingActionButton3.setOnClickListener {
+                preview.visibility = View.GONE
+                overlay.visibility = View.VISIBLE
+                textView4.visibility = View.VISIBLE
+                floatingActionButton.visibility = View.VISIBLE
+            }
+            floatingActionButton2.setOnClickListener {
+                resultBitmap?.let { bitmap -> savePicture(bitmap) }
+                preview.visibility = View.GONE
+                overlay.visibility = View.VISIBLE
+                textView4.visibility = View.VISIBLE
+                floatingActionButton.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -121,13 +159,23 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         if (orientation == Configuration.ORIENTATION_PORTRAIT) {
             // 縦向きの場合
             constraintSet.setDimensionRatio(R.id.view_finder, "3:4")
-            //constraintSet.setDimensionRatio(R.id.overlay, "3:4")
         } else if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
             // 横向きの場合
             constraintSet.setDimensionRatio(R.id.view_finder, "4:3")
-            //constraintSet.setDimensionRatio(R.id.overlay, "4:3")
         }
         constraintSet.applyTo(binding.cameraContainer)
+
+        // レイアウト変更2
+        val constraintSet2 = ConstraintSet()
+        constraintSet2.clone(binding.preview)
+        if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+            // 縦向きの場合
+            constraintSet2.setDimensionRatio(R.id.pic_preview, "3:4")
+        } else if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            // 横向きの場合
+            constraintSet2.setDimensionRatio(R.id.pic_preview, "4:3")
+        }
+        constraintSet2.applyTo(binding.preview)
 
         // 表示の回転を取得
         val rotation = binding.viewFinder.display.rotation
@@ -221,7 +269,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     private fun takePicture() {
         capturedBitmap?.let { bitmap ->
-            detector_pict?.detect(bitmap)
+            pictBitmap = bitmap
+            detectorPict?.detect(bitmap)
         }
     }
 
@@ -274,15 +323,16 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onDestroy()
         // ディテクタを閉じてリソースを解放
         detector?.close()
-        detector_pict?.close()
+        detectorPict?.close()
         // カメラエグゼキュータをシャットダウン
         cameraExecutor.shutdown()
+        pictureExecutor.shutdown()
     }
 
     override fun onPause() {
         super.onPause()
         detector = null
-        detector_pict = null
+        detectorPict = null
         imageAnalyzer = null
         camera = null
         preview = null
@@ -292,13 +342,27 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onResume()
         // アクティビティが再開されたときにパーミッションを確認
         if (allPermissionsGranted()){
-            if (detector == null || detector_pict == null) {
+            if (detector == null) {
+                binding.apply {
+                    textView2.visibility = View.VISIBLE
+                    textView2.invalidate()
+                }
                 cameraExecutor.execute {
                     detector = Detector(1, baseContext, MODEL_PATH, LABELS_PATH, this)
-                    detector_pict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
+                    runOnUiThread {
+                        binding.apply {
+                            textView2.visibility = View.GONE
+                            textView2.invalidate()
+                        }
+                    }
                 }
             }
             startCamera() // パーミッションが許可されていればカメラを開始
+            if(detectorPict == null) {
+                pictureExecutor.execute {
+                    detectorPict = Detector(2, baseContext, MODEL_PATH, LABELS_PATH, this)
+                }
+            }
         } else {
             // パーミッションが許可されていない場合、リクエストを開始
             requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
@@ -321,22 +385,84 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    private fun calcYaku(boundingBoxes: List<BoundingBox>): List<MahjongYakuEnum> {
+        try {
+            // 役の計算
+            val tiles = intArrayOf(
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+                0, 0, 0
+            )
+            val mapper = IntMapper()
+            var last: MahjongTile? = null
+            boundingBoxes.forEach {
+                tiles[mapper.getInt(it.cls)]++
+                last = MahjongTile.valueOf(mapper.getInt(it.cls))
+            }
+            val hands = MahjongHands(tiles, last)
+            val mahjong = Mahjong(hands)
+            mahjong.calculate()
+
+            val yakuList = mahjong.getNormalYakuList()
+
+            return yakuList
+        } catch (e: Exception) {
+            when(e) {
+                is HandsOverFlowException,
+                is IllegalMentsuSizeException,
+                is IllegalShuntsuIdentifierException,
+                is MahjongTileOverFlowException -> {
+                    e.message?.let { Log.e("mahjong", it) }
+                    val yakuList: List<MahjongYakuEnum> = listOf()
+                    return yakuList
+                }
+                else -> throw e
+            }
+        }
+    }
+
     @SuppressLint("SetTextI18n")
     override fun onDetect(id: Int, boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
         if(id == 1) {
             runOnUiThread {
+                // 役の計算
+                val yaku = calcYaku(boundingBoxes)
+
                 // 検出結果をUIに表示
-                binding.overlay.apply {
-                    setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
-                    invalidate() // オーバーレイを再描画
+                binding.apply {
+                    overlay.setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
+                    overlay.invalidate() // オーバーレイを再描画
+
+                    var text = ""
+                    yaku.forEach {
+                        text = text + it.japanese + ","
+                    }
+                    textView4.text = text
+                    textView4.invalidate()
                 }
             }
         } else if(id == 2) {
-            Log.d("MainActivity", "Detected ${boundingBoxes.size} bounding boxes.")
-            capturedBitmap?.let { bitmap ->
-                val resultBitmap = boundingBoxDrawer.drawBoundingBoxes(bitmap, boundingBoxes)
-                savePicture(resultBitmap)
+            pictBitmap?.let { bitmap ->
+                // 役の計算
+                val yaku = calcYaku(boundingBoxes)
+
+                // 画像処理
+                resultBitmap = boundingBoxDrawer.drawBoundingBoxes(bitmap, boundingBoxes, yaku)
+                binding.apply {
+                    floatingActionButton.visibility = View.GONE
+                    overlay.visibility = View.INVISIBLE
+                    textView4.visibility = View.INVISIBLE
+                    preview.visibility = View.VISIBLE
+                    imageView2.setImageBitmap(resultBitmap)
+                    floatingActionButton.invalidate()
+                    overlay.invalidate()
+                    preview.invalidate()
+                    imageView2.invalidate()
+                }
             }
         }
     }
 }
+

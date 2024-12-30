@@ -1,5 +1,6 @@
 package io.github.saisana299.yolojan
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -7,13 +8,16 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import androidx.core.content.ContextCompat
+import org.mahjong4j.yaku.normals.MahjongYakuEnum
 import yolojan.R
 
 class BoundingBoxDrawer(private val context: Context) {
 
     private var boxPaint = Paint()
     private var textBackgroundPaint = Paint()
+    private var yakuTextBackgroundPaint = Paint()
     private var textPaint = Paint()
+    private var yakuTextPaint = Paint()
     private var bounds = Rect()
 
     init {
@@ -23,28 +27,53 @@ class BoundingBoxDrawer(private val context: Context) {
     private fun initPaints() {
         textBackgroundPaint.color = ContextCompat.getColor(context, R.color.bounding_box_color)
         textBackgroundPaint.style = Paint.Style.FILL
-        textBackgroundPaint.textSize = 20f
+        textBackgroundPaint.textSize = 30f
+
+        yakuTextBackgroundPaint.color = Color.BLACK
+        yakuTextBackgroundPaint.style = Paint.Style.FILL
+        yakuTextBackgroundPaint.textSize = 50f
 
         textPaint.color = Color.WHITE
         textPaint.style = Paint.Style.FILL
-        textPaint.textSize = 20f
+        textPaint.textSize = 30f
+
+        yakuTextPaint.color = Color.WHITE
+        yakuTextPaint.style = Paint.Style.FILL
+        yakuTextPaint.textSize = 50f
 
         boxPaint.color = ContextCompat.getColor(context, R.color.bounding_box_color)
-        boxPaint.strokeWidth = 4F
+        boxPaint.strokeWidth = 6F
         boxPaint.style = Paint.Style.STROKE
     }
 
-    fun drawBoundingBoxes(originalBitmap: Bitmap, boundingBoxes: List<BoundingBox>): Bitmap {
-        // 元のビットマップをコピーして新しいビットマップを作成
-        val resultBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
+    @SuppressLint("DefaultLocale")
+    fun drawBoundingBoxes(originalBitmap: Bitmap, boundingBoxes: List<BoundingBox>, yaku: List<MahjongYakuEnum>): Bitmap {
+        // アスペクト比に応じたターゲットサイズを設定
+        val targetHeight: Int = if (originalBitmap.width > originalBitmap.height) {
+            1080
+        } else {
+            1440
+        }
+
+        val scaleFactor = targetHeight.toFloat() / originalBitmap.height
+        val scaledWidth = (originalBitmap.width * scaleFactor).toInt()
+        val scaledBitmap = Bitmap.createScaledBitmap(
+            originalBitmap,
+            scaledWidth,
+            targetHeight,
+            true
+        )
+
+        // スケーリングしたビットマップをコピーして新しいビットマップを作成
+        val resultBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(resultBitmap)
 
         // 元のビットマップの幅と高さを取得
-        val originalWidth = originalBitmap.width
-        val originalHeight = originalBitmap.height
+        val originalWidth = scaledBitmap.width
+        val originalHeight = scaledBitmap.height
 
         // 1:1のアスペクト比でボックスの座標を計算
-        val size = Math.min(originalWidth, originalHeight)
+        val size = originalWidth.coerceAtMost(originalHeight)
 
         // 中心を基準にボックスの座標を調整
         val offsetX = (originalWidth - size) / 2
@@ -88,6 +117,27 @@ class BoundingBoxDrawer(private val context: Context) {
             )
             canvas.drawText(drawableText, leftBox, topBox - BOUNDING_RECT_TEXT_PADDING, textPaint)
         }
+
+        // テキスト描画
+        var text = ""
+        yaku.forEach {
+            text = text + it.japanese + ","
+        }
+        yakuTextBackgroundPaint.getTextBounds(text, 0, text.length, bounds)
+        val textWidth = bounds.width()
+        val textHeight = bounds.height()
+        // 背景の四角をテキストに合わせて描画
+        canvas.drawRect(
+            BOUNDING_RECT_TEXT_PADDING.toFloat(),
+            (originalHeight - textHeight - 3 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 背景の高さを調整
+            (textWidth + 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(),
+            (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 背景の位置を調整
+            yakuTextBackgroundPaint
+        )
+        // テキストを描画
+        canvas.drawText(text,
+            BOUNDING_RECT_TEXT_PADDING.toFloat(),
+            (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING - 10).toFloat(), yakuTextPaint) // テキストの位置を調整
 
         return resultBitmap
     }
