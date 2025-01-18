@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -30,14 +31,15 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.saisana299.yolojan.Constants.LABELS_PATH
 import io.github.saisana299.yolojan.Constants.MODEL_PATH
+import org.mahjong4j.GeneralSituation
 import org.mahjong4j.HandsOverFlowException
 import org.mahjong4j.IllegalMentsuSizeException
 import org.mahjong4j.IllegalShuntsuIdentifierException
-import org.mahjong4j.Mahjong
 import org.mahjong4j.MahjongTileOverFlowException
-import org.mahjong4j.hands.MahjongHands
-import org.mahjong4j.tile.MahjongTile
-import org.mahjong4j.yaku.normals.MahjongYakuEnum
+import org.mahjong4j.PersonalSituation
+import org.mahjong4j.Player
+import org.mahjong4j.hands.Hands
+import org.mahjong4j.tile.Tile
 import yolojan.R
 import yolojan.databinding.ActivityMainBinding
 import java.io.IOException
@@ -65,6 +67,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 画面OFF禁止
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // フルスクリーン
         setFullscreen()
@@ -127,6 +132,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 preview.visibility = View.GONE
                 overlay.visibility = View.VISIBLE
                 textView4.visibility = View.VISIBLE
+                textView5.visibility = View.VISIBLE
                 floatingActionButton.visibility = View.VISIBLE
             }
             floatingActionButton2.setOnClickListener {
@@ -134,7 +140,11 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 preview.visibility = View.GONE
                 overlay.visibility = View.VISIBLE
                 textView4.visibility = View.VISIBLE
+                textView5.visibility = View.VISIBLE
                 floatingActionButton.visibility = View.VISIBLE
+            }
+            floatingActionButton4.setOnClickListener {
+                popupSettings()
             }
         }
     }
@@ -274,6 +284,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    private fun popupSettings() {
+        //
+    }
+
     private fun savePicture(bitmap: Bitmap) {
         val filename = "IMG_${System.currentTimeMillis()}.jpg"
 
@@ -385,7 +399,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
-    private fun calcYaku(boundingBoxes: List<BoundingBox>): List<MahjongYakuEnum> {
+    private fun getMahjong(boundingBoxes: List<BoundingBox>): Player? {
         try {
             // 役の計算
             val tiles = intArrayOf(
@@ -396,18 +410,46 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 0, 0, 0
             )
             val mapper = IntMapper()
-            var last: MahjongTile? = null
+            var last: Tile? = null
             boundingBoxes.forEach {
                 tiles[mapper.getInt(it.cls)]++
-                last = MahjongTile.valueOf(mapper.getInt(it.cls))
+                last = Tile.valueOf(mapper.getInt(it.cls))
             }
-            val hands = MahjongHands(tiles, last)
-            val mahjong = Mahjong(hands)
-            mahjong.calculate()
+            // 手牌
+            val hands = Hands(tiles, last)
+            // 場設定
+            val general = GeneralSituation(
+                // boolean isFirstRound
+                false,
+                // boolean isHoutei
+                false,
+                // Tile bakaze
+                Tile.TON,
+                // List<Tile> dora
+                emptyList(),
+                // List<Tile> uradora
+                emptyList()
+            )
+            // 個人設定
+            val personal = PersonalSituation(
+                // boolean isTsumo
+                false,
+                // boolean isIppatsu
+                false,
+                // boolean isReach
+                false,
+                // boolean isDoubleReach
+                false,
+                // boolean isChankan
+                false,
+                // boolean isRinshankaihoh
+                false,
+                // Tile jikaze
+                Tile.TON
+            )
+            val mahjong = Player(hands, general, personal)
 
-            val yakuList = mahjong.getNormalYakuList()
-
-            return yakuList
+            return mahjong
         } catch (e: Exception) {
             when(e) {
                 is HandsOverFlowException,
@@ -415,51 +457,78 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 is IllegalShuntsuIdentifierException,
                 is MahjongTileOverFlowException -> {
                     e.message?.let { Log.e("mahjong", it) }
-                    val yakuList: List<MahjongYakuEnum> = listOf()
-                    return yakuList
+                    return null
                 }
                 else -> throw e
             }
         }
     }
 
+    private fun getYaku(mahjong: Player): Array<String> {
+        mahjong.calculate()
+        val yaku = mahjong.normalYakuList
+        val yakuman = mahjong.yakumanList
+        val han = mahjong.han
+        val fu = mahjong.fu
+        val score = mahjong.score
+        var count = 0
+        val summary = "" + han + "翻 : " + fu + "符 : " + score.ron + "点"
+        var details = ""
+        yaku?.forEach {
+            details += if(count == 0) it.japanese
+            else (", " + it.japanese)
+            count++
+        }
+        count = 0
+        yakuman?.forEach {
+            details += if(count == 0) it.japanese
+            else (", " + it.japanese)
+            count++
+        }
+        return arrayOf(summary, details)
+    }
+
     @SuppressLint("SetTextI18n")
     override fun onDetect(id: Int, boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
         if(id == 1) {
             runOnUiThread {
-                // 役の計算
-                val yaku = calcYaku(boundingBoxes)
+                val mahjong = getMahjong(boundingBoxes)
+                val text = mahjong?.let { getYaku(it) }
 
                 // 検出結果をUIに表示
                 binding.apply {
                     overlay.setResults(boundingBoxes) // 検出されたバウンディングボックスを設定
                     overlay.invalidate() // オーバーレイを再描画
-
-                    var text = ""
-                    yaku.forEach {
-                        text = text + it.japanese + ","
-                    }
-                    textView4.text = text
+                    textView4.text = text?.get(0) ?: ""
+                    textView5.text = text?.get(1) ?: ""
                     textView4.invalidate()
+                    textView5.invalidate()
                 }
             }
         } else if(id == 2) {
-            pictBitmap?.let { bitmap ->
-                // 役の計算
-                val yaku = calcYaku(boundingBoxes)
+            runOnUiThread {
+                val mahjong = getMahjong(boundingBoxes)
+                val text = mahjong?.let { getYaku(it) }
 
-                // 画像処理
-                resultBitmap = boundingBoxDrawer.drawBoundingBoxes(bitmap, boundingBoxes, yaku)
-                binding.apply {
-                    floatingActionButton.visibility = View.GONE
-                    overlay.visibility = View.INVISIBLE
-                    textView4.visibility = View.INVISIBLE
-                    preview.visibility = View.VISIBLE
-                    imageView2.setImageBitmap(resultBitmap)
-                    floatingActionButton.invalidate()
-                    overlay.invalidate()
-                    preview.invalidate()
-                    imageView2.invalidate()
+                pictBitmap?.let { bitmap ->
+                    // 画像処理
+                    resultBitmap = boundingBoxDrawer.drawBoundingBoxes(
+                        bitmap,
+                        boundingBoxes,
+                        text
+                    )
+                    binding.apply {
+                        floatingActionButton.visibility = View.GONE
+                        overlay.visibility = View.INVISIBLE
+                        textView4.visibility = View.INVISIBLE
+                        textView5.visibility = View.INVISIBLE
+                        preview.visibility = View.VISIBLE
+                        imageView2.setImageBitmap(resultBitmap)
+                        floatingActionButton.invalidate()
+                        overlay.invalidate()
+                        preview.invalidate()
+                        imageView2.invalidate()
+                    }
                 }
             }
         }

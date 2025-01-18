@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import androidx.core.content.ContextCompat
-import org.mahjong4j.yaku.normals.MahjongYakuEnum
 import yolojan.R
 
 class BoundingBoxDrawer(private val context: Context) {
@@ -31,7 +30,7 @@ class BoundingBoxDrawer(private val context: Context) {
 
         yakuTextBackgroundPaint.color = Color.BLACK
         yakuTextBackgroundPaint.style = Paint.Style.FILL
-        yakuTextBackgroundPaint.textSize = 50f
+        yakuTextBackgroundPaint.textSize = 60f
 
         textPaint.color = Color.WHITE
         textPaint.style = Paint.Style.FILL
@@ -39,7 +38,7 @@ class BoundingBoxDrawer(private val context: Context) {
 
         yakuTextPaint.color = Color.WHITE
         yakuTextPaint.style = Paint.Style.FILL
-        yakuTextPaint.textSize = 50f
+        yakuTextPaint.textSize = 60f
 
         boxPaint.color = ContextCompat.getColor(context, R.color.bounding_box_color)
         boxPaint.strokeWidth = 6F
@@ -47,7 +46,7 @@ class BoundingBoxDrawer(private val context: Context) {
     }
 
     @SuppressLint("DefaultLocale")
-    fun drawBoundingBoxes(originalBitmap: Bitmap, boundingBoxes: List<BoundingBox>, yaku: List<MahjongYakuEnum>): Bitmap {
+    fun drawBoundingBoxes(originalBitmap: Bitmap, boundingBoxes: List<BoundingBox>, text: Array<String>?): Bitmap {
         // アスペクト比に応じたターゲットサイズを設定
         val targetHeight: Int = if (originalBitmap.width > originalBitmap.height) {
             1080
@@ -118,26 +117,54 @@ class BoundingBoxDrawer(private val context: Context) {
             canvas.drawText(drawableText, leftBox, topBox - BOUNDING_RECT_TEXT_PADDING, textPaint)
         }
 
-        // テキスト描画
-        var text = ""
-        yaku.forEach {
-            text = text + it.japanese + ","
+        text?.let {
+            val summary = it[0]
+            val details = it[1]
+
+            // details のテキストボックスの幅と高さを取得
+            yakuTextBackgroundPaint.getTextBounds(details, 0, details.length, bounds)
+            val detailsWidth = bounds.width()
+            val detailsHeight = bounds.height()
+
+            // summary のテキストボックスの幅と高さを取得
+            yakuTextBackgroundPaint.getTextBounds(summary, 0, summary.length, bounds)
+            val summaryWidth = bounds.width()
+            val summaryHeight = bounds.height()
+
+            // 背景の四角をテキストに合わせて描画（details）
+            canvas.drawRect(
+                BOUNDING_RECT_TEXT_PADDING.toFloat(),
+                (originalHeight - detailsHeight - 3 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // details 背景の高さを調整
+                (detailsWidth + 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(),
+                (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // details 背景の位置を調整
+                yakuTextBackgroundPaint
+            )
+
+            // details を描画
+            canvas.drawText(
+                details,
+                BOUNDING_RECT_TEXT_PADDING.toFloat(),
+                (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING - 10).toFloat(), // details テキストの位置
+                yakuTextPaint
+            )
+
+            // summary の背景を追加して描画
+            canvas.drawRect(
+                BOUNDING_RECT_TEXT_PADDING.toFloat(), // 左端
+                (originalHeight - detailsHeight - summaryHeight - 4 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 上端
+                (summaryWidth + 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 右端
+                (originalHeight - detailsHeight - 3 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 下端
+                yakuTextBackgroundPaint
+            )
+
+            // summary の描画位置を下に調整
+            canvas.drawText(
+                summary,
+                BOUNDING_RECT_TEXT_PADDING.toFloat(), // 左端位置は同じ
+                (originalHeight - detailsHeight - 3 * BOUNDING_RECT_TEXT_PADDING - 5).toFloat(), // 下に調整
+                yakuTextPaint
+            )
         }
-        yakuTextBackgroundPaint.getTextBounds(text, 0, text.length, bounds)
-        val textWidth = bounds.width()
-        val textHeight = bounds.height()
-        // 背景の四角をテキストに合わせて描画
-        canvas.drawRect(
-            BOUNDING_RECT_TEXT_PADDING.toFloat(),
-            (originalHeight - textHeight - 3 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 背景の高さを調整
-            (textWidth + 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(),
-            (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING).toFloat(), // 背景の位置を調整
-            yakuTextBackgroundPaint
-        )
-        // テキストを描画
-        canvas.drawText(text,
-            BOUNDING_RECT_TEXT_PADDING.toFloat(),
-            (originalHeight - 2 * BOUNDING_RECT_TEXT_PADDING - 10).toFloat(), yakuTextPaint) // テキストの位置を調整
 
         return resultBitmap
     }
