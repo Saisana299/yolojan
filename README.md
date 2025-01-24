@@ -1,4 +1,4 @@
-## yolojan
+## YOLO雀
 Use the YOLOv8 model to detect mahjong tiles.
 
 yolojan was created based on the following repository. Thanks to the creators.

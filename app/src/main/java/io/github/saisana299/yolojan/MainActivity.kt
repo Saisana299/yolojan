@@ -133,6 +133,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 overlay.visibility = View.VISIBLE
                 textView4.visibility = View.VISIBLE
                 textView5.visibility = View.VISIBLE
+                textView6.visibility = View.VISIBLE
                 floatingActionButton.visibility = View.VISIBLE
             }
             floatingActionButton2.setOnClickListener {
@@ -141,10 +142,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 overlay.visibility = View.VISIBLE
                 textView4.visibility = View.VISIBLE
                 textView5.visibility = View.VISIBLE
+                textView6.visibility = View.VISIBLE
                 floatingActionButton.visibility = View.VISIBLE
-            }
-            floatingActionButton4.setOnClickListener {
-                popupSettings()
             }
         }
     }
@@ -282,10 +281,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             pictBitmap = bitmap
             detectorPict?.detect(bitmap)
         }
-    }
-
-    private fun popupSettings() {
-        //
     }
 
     private fun savePicture(bitmap: Bitmap) {
@@ -522,6 +517,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                         overlay.visibility = View.INVISIBLE
                         textView4.visibility = View.INVISIBLE
                         textView5.visibility = View.INVISIBLE
+                        textView6.visibility = View.GONE
                         preview.visibility = View.VISIBLE
                         imageView2.setImageBitmap(resultBitmap)
                         floatingActionButton.invalidate()
