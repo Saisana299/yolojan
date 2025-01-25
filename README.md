@@ -4,9 +4,6 @@ Use the YOLOv8 model to detect mahjong tiles.
 yolojan was created based on the following repository. Thanks to the creators.
 https://github.com/surendramaran/YOLO/tree/main/YOLOv8-Object-Detector-Android-Tflite
 
-### Getting Started
-Create an `assets` folder in `app/src/main` and put the label text file and tflite file in it.
-
 ### License
 Original repository: Surendra Maran (https://github.com/surendramaran)
 
